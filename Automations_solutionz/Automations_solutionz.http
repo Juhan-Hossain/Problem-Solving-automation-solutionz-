@@ -1,0 +1,6 @@
+@Automations_solutionz_HostAddress = http://localhost:5090
+
+GET {{Automations_solutionz_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
