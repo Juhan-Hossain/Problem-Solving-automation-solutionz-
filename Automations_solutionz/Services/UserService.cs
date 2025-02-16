@@ -1,5 +1,6 @@
 ﻿using Automations_solutionz.Data;
 using Automations_solutionz.Entity;
+using Automations_solutionz.Helpers;
 using Automations_solutionz.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -23,19 +24,29 @@ namespace Automations_solutionz.Services
         {
             try
             {
-                if(_cache.TryGetValue(UserCacheKey,out IEnumerable<User> users))
+                if(_cache.TryGetValue(CacheKeys.UsersList, out IEnumerable<User> users))
                 {
+                    _logger.LogDebug("Cache hit for users list");
                     return users;
                 }
 
                 // if cache miss:
-
+                _logger.LogDebug("Cache miss for users list");
                 users = await _context
-                               .Users.AsNoTracking().ToListAsync();
+                               .Users.AsNoTracking()
+                               .ToListAsync();
 
-                var cacheOptions = new MemoryCacheOptions().SetSlidingExpiration(TimeSpan.FromMinutes(5)).SetAbsoluteExpiration(TimeSpan.FromMinutes(1));
+                var cacheOptions = new MemoryCacheEntryOptions()
+                               .SetSlidingExpiration(CacheConfig.SlidingExpiration)
+                               .SetAbsoluteExpiration(CacheConfig.AbsoluteExpiration)
+                               .RegisterPostEvictionCallback((key, value, reason, state) =>
+                               {
+                                   _logger.LogInformation(
+                                       "Users list cache entry was evicted. Reason: {Reason}",
+                                       reason);
+                               });
 
-                _cache.Set(UserCacheKey, users, cacheOptions);
+                _cache.Set(CacheKeys.UsersList, users, cacheOptions);
                 return users;
 
             }

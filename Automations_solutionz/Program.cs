@@ -3,6 +3,7 @@ using Automations_solutionz.Interfaces;
 using Automations_solutionz.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,26 +23,47 @@ builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlSer
     ));
 builder.Services.AddMemoryCache();
 
-builder.Services.AddScoped<IUserService, UserService>()
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            validateAudience = true,
-            ValidationLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidateIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]
-                ))
-        };
-    });
+builder.Services.AddScoped<IUserService, UserService>();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+           .AddJwtBearer(options =>
+           {
+               var jwtSettings = builder.Configuration.GetSection("Jwt:TokenValidation");
+               var secretKey = builder.Configuration["Jwt:Key"];
+
+               options.TokenValidationParameters = new TokenValidationParameters
+               {
+                   ValidateIssuer = jwtSettings.GetValue<bool>("ValidateIssuer"),
+                   ValidateAudience = jwtSettings.GetValue<bool>("ValidateAudience"),
+                   ValidateLifetime = jwtSettings.GetValue<bool>("ValidateLifetime"),
+                   ValidateIssuerSigningKey = jwtSettings.GetValue<bool>("ValidateIssuerSigningKey"),
+                   RequireExpirationTime = jwtSettings.GetValue<bool>("RequireExpirationTime"),
+                   ClockSkew = TimeSpan.Parse(jwtSettings["ClockSkew"]),
+
+                   ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                   ValidAudience = builder.Configuration["Jwt:Audience"],
+                   IssuerSigningKey = new SymmetricSecurityKey(
+                       Encoding.UTF8.GetBytes(secretKey))
+               };
+
+               options.Events = new JwtBearerEvents
+               {
+                   OnAuthenticationFailed = context =>
+                   {
+                       if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+                       {
+                           context.Response.Headers.Add("Token-Expired", "true");
+                       }
+                       return Task.CompletedTask;
+                   }
+               };
+           });
+
 
 //add jwt authentication
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme);
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
